@@ -1,5 +1,6 @@
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { cacheSessionPath } from "./session-reader";
+import { getGitHubToken } from "@/lib/github-auth";
 import type { AgentSessionLike, ToolInfo } from "./pi-types";
 
 // ============================================================================
@@ -294,7 +295,6 @@ export async function startRpcSession(
     // on the next session, not before. This is the only place agent processes
     // pick up the token — clone route uses its own mechanism via credential helper.
     try {
-      const { getGitHubToken } = require("@/lib/github-auth");
       const token = getGitHubToken();
       if (token) {
         process.env.GH_TOKEN = token;
@@ -302,7 +302,7 @@ export async function startRpcSession(
         delete process.env.GH_TOKEN;
       }
     } catch {
-      // ignore if module not available
+      // ignore
     }
 
     const sessionManager = sessionFile
