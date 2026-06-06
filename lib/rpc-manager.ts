@@ -289,6 +289,13 @@ export async function startRpcSession(
     const { SessionManager, getAgentDir } = await import("@earendil-works/pi-coding-agent");
     const agentDir = getAgentDir();
 
+    // Set GH_TOKEN from stored GitHub OAuth token so agent can use gh CLI
+    if (!process.env.GH_TOKEN) {
+      const { getGitHubToken } = await import("@/lib/github-auth");
+      const token = getGitHubToken();
+      if (token) process.env.GH_TOKEN = token;
+    }
+
     const sessionManager = sessionFile
       ? SessionManager.open(sessionFile, undefined)
       : SessionManager.create(cwd, undefined);

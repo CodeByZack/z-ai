@@ -223,6 +223,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       try {
         const event = JSON.parse(e.data) as AgentEvent;
         handleAgentEventRef.current?.(event);
+
+        // On SSE reconnect during an active session, sync phase from server
+        if (event.type === "connected" && agentRunningRef.current && sid) {
+          fetch(`/api/agent/${encodeURIComponent(sid)}`)
+            .then((r) => r.json())
+            .then((d: { running?: boolean; state?: { isStreaming?: boolean; isCompacting?: boolean } }) => {
+              if (d.running && d.state?.isStreaming) {
+                // Agent is still streaming — reset phase to null so it shows streaming
+                setAgentPhase(null);
+              }
+            })
+            .catch(() => {});
+        }
       } catch {
         // ignore
       }
