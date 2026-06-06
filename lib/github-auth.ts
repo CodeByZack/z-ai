@@ -38,7 +38,11 @@ function getSettingsPath(): string {
 function readSettings(): Record<string, unknown> {
   const path = getSettingsPath();
   if (!existsSync(path)) return {};
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 function writeSettings(settings: Record<string, unknown>): void {

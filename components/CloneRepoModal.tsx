@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { parseRepo as parseRepoShared } from "@/lib/parse-repo";
 
 interface Props {
   onCloned: (path: string) => void;
@@ -15,6 +16,13 @@ export function CloneRepoModal({ onCloned, onClose }: Props) {
   const [showLogs, setShowLogs] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -26,17 +34,7 @@ export function CloneRepoModal({ onCloned, onClose }: Props) {
 
   const handleClose = () => onClose();
 
-  const parseRepo = useCallback((input: string): string | null => {
-    if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(input)) return input;
-    try {
-      const url = new URL(input);
-      if (url.hostname === "github.com") {
-        const parts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
-        if (parts.length >= 2) return `${parts[0]}/${parts[1]}`;
-      }
-    } catch { /* not a URL */ }
-    return null;
-  }, []);
+  const parseRepo = useCallback((input: string): string | null => parseRepoShared(input), []);
 
   const isValidFormat = parseRepo(repo.trim()) !== null;
   const repoPreview = parseRepo(repo.trim());
@@ -99,7 +97,12 @@ export function CloneRepoModal({ onCloned, onClose }: Props) {
               setLogs((prev) => [...prev, "✓ Done!"]);
               setLoading(false);
               onCloned(data.path);
-              setTimeout(handleClose, 300);
+              closeTimerRef.current = setTimeout(handleClose, 300);
+            }
+
+            if (data.type === "error" && data.message) {
+              setError(data.message!);
+              setLoading(false);
             }
           } catch { /* ignore */ }
         }

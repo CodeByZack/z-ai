@@ -1,30 +1,10 @@
 import { NextResponse } from "next/server";
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync, chmodSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { getGitHubToken } from "@/lib/github-auth";
+import { parseRepo } from "@/lib/parse-repo";
 import { getAgentDir } from "@/lib/session-reader";
-
-// Extract owner/repo from either "owner/repo" or full URL
-function parseRepo(input: string): string | null {
-  const trimmed = input.trim();
-
-  // Already owner/repo format
-  if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(trimmed)) return trimmed;
-
-  // Full URL: https://github.com/owner/repo.git or https://github.com/owner/repo
-  try {
-    const url = new URL(trimmed);
-    if (url.hostname === "github.com") {
-      const parts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
-      if (parts.length >= 2) return `${parts[0]}/${parts[1]}`;
-    }
-  } catch {
-    // not a valid URL
-  }
-
-  return null;
-}
 
 // POST /api/github/clone — clone a repo, stream progress via SSE
 // Accepts: "owner/repo" or "https://github.com/owner/repo[.git]"
@@ -68,41 +48,55 @@ export async function POST(req: Request) {
 
       encode({ type: "progress", message: `Cloning ${repo}...` });
 
-      try {
-        // Try gh CLI first, fall back to git clone
-        const child = spawn("gh", ["repo", "clone", repo, cloneDir], {
-          env: { ...process.env, GH_TOKEN: token },
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-
-        child.stdout.on("data", (data: Buffer) => {
-          const lines = data.toString().split("\n").filter(Boolean);
-          for (const line of lines) {
-            encode({ type: "progress", message: line });
-          }
-        });
-
-        child.stderr.on("data", (data: Buffer) => {
-          const lines = data.toString().split("\n").filter(Boolean);
-          for (const line of lines) {
-            // gh outputs progress on stderr — treat as progress, not error
-            encode({ type: "progress", message: line });
-          }
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          child.on("close", (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`gh repo clone exited with code ${code}`));
+      const doClone = async (): Promise<void> => {
+        // Try gh CLI first
+        try {
+          const child = spawn("gh", ["repo", "clone", repo, cloneDir], {
+            env: { ...process.env, GH_TOKEN: token },
+            stdio: ["ignore", "pipe", "pipe"],
           });
-          child.on("error", reject);
-        });
-      } catch {
-        // Fallback: git clone with token in URL
-        encode({ type: "progress", message: "gh not available, falling back to git clone..." });
-        const gitUrl = `https://x-access-token:${token}@github.com/${repo}.git`;
 
-        const child = spawn("git", ["clone", gitUrl, cloneDir], {
+          child.stdout.on("data", (data: Buffer) => {
+            const lines = data.toString().split("\n").filter(Boolean);
+            for (const line of lines) {
+              encode({ type: "progress", message: line });
+            }
+          });
+
+          child.stderr.on("data", (data: Buffer) => {
+            const lines = data.toString().split("\n").filter(Boolean);
+            for (const line of lines) {
+              encode({ type: "progress", message: line });
+            }
+          });
+
+          await new Promise<void>((resolve, reject) => {
+            child.on("close", (code) => {
+              if (code === 0) resolve();
+              else reject(new Error(`gh repo clone exited with code ${code}`));
+            });
+            child.on("error", reject);
+          });
+
+          return;
+        } catch {
+          // Fallback to git clone
+        }
+
+        // Fallback: git clone with GIT_ASKPASS to avoid token in URL
+        encode({ type: "progress", message: "gh not available, falling back to git clone..." });
+
+        // Create askpass script that outputs the token
+        const askpassPath = join(reposDir, ".git-askpass.sh");
+        writeFileSync(askpassPath, `#!/bin/sh\necho "${token}"\n`, "utf-8");
+        chmodSync(askpassPath, 0o755);
+
+        const child = spawn("git", ["clone", `https://github.com/${repo}.git`, cloneDir], {
+          env: {
+            ...process.env,
+            GIT_ASKPASS: askpassPath,
+            GIT_TERMINAL_PROMPT: "0",
+          },
           stdio: ["ignore", "pipe", "pipe"],
         });
 
@@ -119,16 +113,26 @@ export async function POST(req: Request) {
             else reject(new Error(`git clone exited with code ${code}`));
           });
           child.on("error", reject);
+        }).finally(() => {
+          try { unlinkSync(askpassPath); } catch { /* ignore */ }
         });
+      };
+
+      try {
+        await doClone();
+
+        // Set git identity for commits — use spawnSync so it completes before we respond
+        try {
+          spawnSync("git", ["config", "user.name", "z-ai"], { cwd: cloneDir });
+          spawnSync("git", ["config", "user.email", "z-ai@local"], { cwd: cloneDir });
+        } catch { /* non-critical */ }
+
+        encode({ type: "done", path: cloneDir, message: `Cloned ${repo} to ${cloneDir}` });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Clone failed";
+        encode({ type: "error", message: msg });
       }
 
-      // Set git identity for commits
-      try {
-        spawn("git", ["config", "user.name", "z-ai"], { cwd: cloneDir });
-        spawn("git", ["config", "user.email", "z-ai@local"], { cwd: cloneDir });
-      } catch { /* non-critical */ }
-
-      encode({ type: "done", path: cloneDir, message: `Cloned ${repo} to ${cloneDir}` });
       controller.close();
     },
   });

@@ -10,6 +10,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const returnedState = searchParams.get("state");
 
   if (error) {
     return new Response(`GitHub OAuth error: ${error}`, { status: 400 });
@@ -17,6 +18,15 @@ export async function GET(req: Request) {
 
   if (!code) {
     return new Response("Missing authorization code", { status: 400 });
+  }
+
+  // Validate state to prevent CSRF
+  const cookies = req.headers.get("cookie") || "";
+  const stateCookie = cookies.split(";").find((c) => c.trim().startsWith("github_oauth_state="));
+  const expectedState = stateCookie ? stateCookie.split("=")[1]?.trim() : null;
+
+  if (!returnedState || !expectedState || returnedState !== expectedState) {
+    return new Response("Invalid OAuth state (possible CSRF)", { status: 400 });
   }
 
   const config = getGitHubConfig();
@@ -71,5 +81,16 @@ export async function GET(req: Request) {
 
   // Redirect back to the app
   const { origin } = new URL(req.url);
-  return NextResponse.redirect(origin);
+  const response = NextResponse.redirect(origin);
+
+  // Clear the state cookie
+  response.cookies.set("github_oauth_state", "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+
+  return response;
 }

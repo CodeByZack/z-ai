@@ -223,19 +223,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       try {
         const event = JSON.parse(e.data) as AgentEvent;
         handleAgentEventRef.current?.(event);
-
-        // On SSE reconnect during an active session, sync phase from server
-        if (event.type === "connected" && agentRunningRef.current && sid) {
-          fetch(`/api/agent/${encodeURIComponent(sid)}`)
-            .then((r) => r.json())
-            .then((d: { running?: boolean; state?: { isStreaming?: boolean; isCompacting?: boolean } }) => {
-              if (d.running && d.state?.isStreaming) {
-                // Agent is still streaming — reset phase to null so it shows streaming
-                setAgentPhase(null);
-              }
-            })
-            .catch(() => {});
-        }
       } catch {
         // ignore
       }
@@ -257,6 +244,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
     switch (event.type) {
+      case "connected":
+        // On SSE reconnect during an active session, sync phase from server
+        if (agentRunningRef.current && sessionIdRef.current) {
+          fetch(`/api/agent/${encodeURIComponent(sessionIdRef.current)}`)
+            .then((r) => r.json())
+            .then((d: { running?: boolean; state?: { isStreaming?: boolean } }) => {
+              if (d.running && d.state?.isStreaming) {
+                setAgentPhase(null);
+              }
+            })
+            .catch(() => {});
+        }
+        break;
       case "agent_start":
         setAgentRunning(true);
         setAgentPhase({ kind: "waiting_model" });

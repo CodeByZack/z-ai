@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getGitHubConfig, isGitHubConfigured } from "@/lib/github-auth";
+import crypto from "node:crypto";
 
 // GET /api/github/login — redirect to GitHub OAuth page
 export async function GET(req: Request) {
@@ -11,18 +12,32 @@ export async function GET(req: Request) {
   }
 
   const config = getGitHubConfig();
-
-  // Derive redirect URI from the request origin (works for both localhost and NAS)
   const { origin } = new URL(req.url);
   const redirectUri = config.redirectUri || `${origin}/api/github/callback`;
+
+  // Generate random state for CSRF protection
+  const state = crypto.randomBytes(16).toString("hex");
 
   const params = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: redirectUri,
     scope: "repo,read:user",
     response_type: "code",
+    state,
   });
 
   const url = `https://github.com/login/oauth/authorize?${params.toString()}`;
-  return NextResponse.redirect(url);
+
+  const response = NextResponse.redirect(url);
+
+  // Store state in cookie for validation on callback
+  response.cookies.set("github_oauth_state", state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 10, // 10 minutes
+  });
+
+  return response;
 }
