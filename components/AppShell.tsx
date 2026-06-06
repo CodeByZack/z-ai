@@ -702,7 +702,6 @@ export function AppShell() {
     {cloneModalOpen && (
       <CloneRepoModal
         onCloned={(path) => {
-          setActiveCwd(path);
           setNewSessionCwd(path);
           setSelectedSession(null);
           setSessionKey((k) => k + 1);

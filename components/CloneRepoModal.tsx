@@ -195,7 +195,7 @@ export function CloneRepoModal({ onCloned, onClose }: Props) {
                 border: "none", borderRadius: 8,
                 color: loading ? "var(--text-muted)" : "#fff",
                 fontSize: 13, fontWeight: 600,
-                cursor: loading ? "wait" : isValidFormat ? "pointer" : "not-allowed",
+                cursor: !isValidFormat && !loading ? "not-allowed" : loading ? "wait" : "pointer",
                 opacity: loading ? 0.6 : !isValidFormat ? 0.5 : 1,
               }}
             >

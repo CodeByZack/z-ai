@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getGitHubConfig, isGitHubConfigured, setGitHubToken, setGitHubUser } from "@/lib/github-auth";
 
 // GET /api/github/callback — handle OAuth callback from GitHub
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   if (!isGitHubConfigured()) {
     return new Response("GitHub OAuth not configured", { status: 400 });
   }
@@ -20,16 +20,16 @@ export async function GET(req: Request) {
     return new Response("Missing authorization code", { status: 400 });
   }
 
-  // Validate state to prevent CSRF
-  const cookies = req.headers.get("cookie") || "";
-  const stateCookie = cookies.split(";").find((c) => c.trim().startsWith("github_oauth_state="));
-  const expectedState = stateCookie ? stateCookie.split("=")[1]?.trim() : null;
+  // Validate state to prevent CSRF — use Next.js cookie API
+  const expectedState = req.cookies.get("github_oauth_state")?.value;
 
   if (!returnedState || !expectedState || returnedState !== expectedState) {
     return new Response("Invalid OAuth state (possible CSRF)", { status: 400 });
   }
 
   const config = getGitHubConfig();
+  const { origin } = new URL(req.url);
+  const redirectUri = config.redirectUri || `${origin}/api/github/callback`;
 
   // Exchange code for access token
   const tokenResponse = await fetch(
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
         client_id: config.clientId,
         client_secret: config.clientSecret,
         code,
-        redirect_uri: config.redirectUri,
+        redirect_uri: redirectUri,
       }),
     }
   );
@@ -80,7 +80,6 @@ export async function GET(req: Request) {
   setGitHubToken(token);
 
   // Redirect back to the app
-  const { origin } = new URL(req.url);
   const response = NextResponse.redirect(origin);
 
   // Clear the state cookie
