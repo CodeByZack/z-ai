@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
   }
 
   const config = getGitHubConfig();
-  const { origin } = new URL(req.url);
+  const { origin, protocol } = new URL(req.url);
+  const isSecure = protocol === "https:";
   const redirectUri = config.redirectUri || `${origin}/api/github/callback`;
 
   // Exchange code for access token
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
   // Clear the state cookie
   response.cookies.set("github_oauth_state", "", {
     httpOnly: true,
-    secure: true,
+    secure: isSecure,
     sameSite: "lax",
     path: "/",
     maxAge: 0,
