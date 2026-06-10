@@ -12,7 +12,8 @@ export async function GET(req: Request) {
   }
 
   const config = getGitHubConfig();
-  const { origin } = new URL(req.url);
+  const { origin, protocol } = new URL(req.url);
+  const isSecure = protocol === "https:";
   const redirectUri = config.redirectUri || `${origin}/api/github/callback`;
 
   // Generate random state for CSRF protection
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
   // Store state in cookie for validation on callback
   response.cookies.set("github_oauth_state", state, {
     httpOnly: true,
-    secure: true,
+    secure: isSecure,
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 10, // 10 minutes

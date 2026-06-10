@@ -26,7 +26,7 @@ ENV PORT=30141
 ENV HOSTNAME=0.0.0.0
 
 # Install git + gh for agent use
-RUN apk add --no-cache git openssh su-exec && \
+RUN apk add --no-cache git openssh su-exec github-cli && \
     addgroup --system --gid 1001 piweb && \
     adduser --system --uid 1001 piweb && \
     mkdir -p /home/piweb/.pi/agent && \

@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "dev": "next dev -p 30141",
+    "dev:portless": "portless zai next dev -p 30141",
     "build": "next build --webpack",
     "start": "next start -p 30141",
     "lint": "eslint .",
@@ -42,6 +43,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "portless": "^0.14.0",
     "postcss": "^8",
     "tailwindcss": "^4.2.2",
     "typescript": "^5"
